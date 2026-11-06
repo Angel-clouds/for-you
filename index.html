@@ -108,7 +108,7 @@
   </style>
 </head>
 
-<body class="font-sans text-mist antialiased overflow-hidden select-none">
+<body class="font-sans text-mist antialiased overflow-x-hidden select-none">
 
   <!-- Background ambiance -->
   <div class="fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
@@ -139,7 +139,7 @@
     <section id="step2" class="fade is-hidden hidden w-full max-w-xl text-center">
 
       <!-- Typewriter text lands here -->
-      <p id="typed" class="text-lg sm:text-2xl leading-relaxed sm:leading-relaxed font-light text-mist min-h-[6em]"></p>
+      <div id="typed" class="text-left text-[17px] sm:text-xl leading-relaxed sm:leading-relaxed font-light text-mist min-h-[6em]"></div>
 
       <!-- STEP 3 — The question -->
       <div id="step3" class="fade is-hidden mt-12">
@@ -160,7 +160,7 @@
     </section>
 
     <!-- ============ FINAL — The reward ============ -->
-    <section id="final" class="fade is-hidden hidden absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+    <section id="final" class="fade is-hidden hidden fixed inset-0 flex flex-col items-center justify-center px-6 text-center">
       <p id="finalText" class="text-3xl sm:text-5xl font-light text-white leading-snug"></p>
     </section>
   </main>
@@ -175,20 +175,40 @@
       nickname:   'Kitty',
       buttonText: 'I have something to tell you, *{nickname}*...',
 
-      message:
-        "I built this just to remind you of something important: you *truly matter* to me. " +
-        "Beyond the games, the teasing, and the distance between us, the time we spend together " +
-        "is my favorite part of the day. You are never just a passing thought. " +
-        "You are *incredibly special* to me, and I wanted to make sure you knew it.",
+      // Write it freely between the backticks: leave an EMPTY LINE to start a new paragraph.
+      message: `
+        I wanted to create something *special*, just for you, to show you exactly what goes on
+        in my heart. I built this site for one simple reason: to give you something tangible that
+        proves exactly what I feel for you. Because standard messages aren't enough to express how
+        much you truly mean to me, and how deeply you are anchored in my mind.
 
-      question:  'Do you forgive me for overthinking today?',
+        Even with the miles between us, you are the absolute *center of my gravity*. From the moment
+        I wake up to the second I close my eyes, your voice, your laugh, and your energy are
+        constantly playing in my thoughts. You are never just a notification on my screen or a voice
+        in a game. You are the woman I crave to hold, the one I want to spend hours talking to, and
+        the only one who can make my heart race without even trying.
+
+        I know we play games, I know we tease each other, and I love our dynamic more than anything.
+        I love it when you are my sweet, playful *Kitty*. But behind all the banter and the screens,
+        there is a raw, burning passion that I hold for you. I don’t care about official labels or
+        what the rest of the world thinks. I just know that what I feel for you is
+        *real, overwhelming, and absolute*.
+
+        I want to be the safe place you come to when you're tired, the man who protects you, and the
+        one who makes you feel completely adored. Never doubt how much you matter to me,
+        *Sarah-Jane*. You are precious to me. You are my girl, my weakness, and my
+        *greatest obsession*. And I wouldn't trade what we have for anything in the world.
+      `,
+
+      question:  'So... will you stay my *Kitty*?',
       finalText: 'Good *girl*. Ready for our next *game*?',
 
       // Little phrases the "No" button cycles through while it runs away
       noTexts: ['No', 'Nope', 'Too slow', 'Nice try', 'Not an option', 'Just say yes', '😏'],
 
-      typingSpeed: 45,   // ms per letter (lower = faster)
-      punctuationPause: 380, // extra pause after , . ! ?
+      typingSpeed: 30,       // ms per letter (lower = faster)
+      punctuationPause: 260, // extra pause after , . ! ?
+      paragraphPause: 900,   // pause before each new paragraph
     };
 
     /* ---------------------------------------------------------------------
@@ -234,6 +254,8 @@
       await wait(700);
       render($('question'), CONFIG.question);
       show($('step3'));
+      await wait(300);
+      $('step3').scrollIntoView({ block: 'center', behavior: 'smooth' });
     }, { once: true });
 
     /* ---------------------------------------------------------------------
@@ -243,19 +265,39 @@
       el.innerHTML = '';
       const caret = document.createElement('span');
       caret.className = 'caret';
-      el.appendChild(caret);
 
-      for (const seg of parse(str)) {
-        const span = document.createElement('span');
-        if (seg.key) span.className = KEYWORD_CLASS;
-        el.insertBefore(span, caret);
+      // An empty line in the message = a new paragraph. Line breaks inside a
+      // paragraph are just formatting in the code, so they become spaces.
+      const paragraphs = str.split(/\n\s*\n/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
 
-        for (const ch of seg.text) {
-          span.textContent += ch;
-          // Slight human-like randomness + pauses on punctuation
-          let delay = CONFIG.typingSpeed * (0.6 + Math.random() * 0.8);
-          if (/[,.!?]/.test(ch)) delay += CONFIG.punctuationPause;
-          await wait(delay);
+      let lastLineTop = 0;
+      for (const [i, text] of paragraphs.entries()) {
+        if (i > 0) await wait(CONFIG.paragraphPause);
+        const p = document.createElement('p');
+        p.className = 'mb-6 last:mb-0';
+        el.appendChild(p);
+        p.appendChild(caret);
+
+        for (const seg of parse(text)) {
+          const span = document.createElement('span');
+          if (seg.key) span.className = KEYWORD_CLASS;
+          p.insertBefore(span, caret);
+
+          for (const ch of seg.text) {
+            span.textContent += ch;
+
+            // On each new line, gently scroll so the text being typed stays in view
+            const top = caret.getBoundingClientRect().top;
+            if (top !== lastLineTop) {
+              lastLineTop = top;
+              if (top > window.innerHeight * 0.6) caret.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+
+            // Slight human-like randomness + pauses on punctuation
+            let delay = CONFIG.typingSpeed * (0.6 + Math.random() * 0.8);
+            if (/[,.!?]/.test(ch)) delay += CONFIG.punctuationPause;
+            await wait(delay);
+          }
         }
       }
       await wait(1200);
@@ -342,6 +384,7 @@
 
       hide($('step2'));
       await wait(1100);
+      window.scrollTo(0, 0);
       render($('finalText'), CONFIG.finalText);
       show($('final'));
       setTimeout(() => ($('warmth').style.opacity = 0.55), 2500);
