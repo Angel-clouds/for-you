@@ -118,7 +118,7 @@
   </div>
 
   <!-- Particles canvas (final celebration) -->
-  <canvas id="particles" class="fixed inset-0 pointer-events-none z-0"></canvas>
+  <canvas id="particles" class="fixed inset-0 w-full h-full pointer-events-none z-0"></canvas>
   <!-- Warm glow overlay (final celebration) -->
   <div id="warmth" class="fixed inset-0 pointer-events-none opacity-0 z-0"></div>
 
@@ -162,6 +162,15 @@
     <!-- ============ FINAL — The reward ============ -->
     <section id="final" class="fade is-hidden hidden fixed inset-0 flex flex-col items-center justify-center px-6 text-center">
       <p id="finalText" class="text-3xl sm:text-5xl font-light text-white leading-snug"></p>
+
+      <!-- Confetti button, pinned to the bottom of the screen (spam it!) -->
+      <div class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 px-6 pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <button id="confettiBtn"
+          class="rounded-full border border-neon/50 bg-neon/10 px-8 py-3 text-sm tracking-wide text-white backdrop-blur
+                 hover:bg-neon/20 active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/60 transition-transform duration-100 touch-manipulation">
+        </button>
+        <p id="confettiNote" class="text-xs text-white/40 italic"></p>
+      </div>
     </section>
   </main>
 
@@ -201,7 +210,11 @@
       `,
 
       question:  'So... will you stay my *Kitty*?',
-      finalText: 'Good *girl*. Ready for our next *game*?',
+      finalText: 'Good *girl*. I will *take care* of you.',
+
+      // Final screen: confetti button + the little note under it
+      confettiButtonText: 'Press me 🎉',
+      confettiNote:       '(yes, I put it back in English for you)',
 
       // Little phrases the "No" button cycles through while it runs away
       noTexts: ['No', 'Nope', 'Too slow', 'Nice try', 'Not an option', 'Just say yes', '😏'],
@@ -386,9 +399,18 @@
       await wait(1100);
       window.scrollTo(0, 0);
       render($('finalText'), CONFIG.finalText);
+      $('confettiBtn').textContent = CONFIG.confettiButtonText;
+      $('confettiNote').textContent = CONFIG.confettiNote;
       show($('final'));
       setTimeout(() => ($('warmth').style.opacity = 0.55), 2500);
     }, { once: true });
+
+    // Confetti button: every press = a new explosion (spam welcome)
+    $('confettiBtn').addEventListener('pointerdown', (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      confetti(r.left + r.width / 2, r.top);
+      if (navigator.vibrate) navigator.vibrate(12); // tiny haptic tick on Android
+    });
 
     /* ---------------------------------------------------------------------
        Particles engine (tiny, canvas-based)
@@ -423,6 +445,32 @@
       });
     }
 
+    // Confetti: little spinning paper rectangles shot upward, then falling with gravity
+    const CONFETTI_COLORS = ['#c084fc', '#e11d48', '#f472b6', '#fbbf24', '#38bdf8', '#ffffff'];
+    function confetti(x, y) {
+      for (let i = 0; i < 90; i++) {
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.6; // mostly upward
+        const speed = 6 + Math.random() * 10;
+        particles.push({
+          confetti: true,
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          w: 6 + Math.random() * 6,
+          h: 3 + Math.random() * 4,
+          rot: Math.random() * Math.PI,
+          spin: (Math.random() - 0.5) * 0.4,
+          life: 0,
+          max: 160 + Math.random() * 80,
+          color: CONFETTI_COLORS[(Math.random() * CONFETTI_COLORS.length) | 0],
+          wobble: Math.random() * Math.PI * 2,
+        });
+      }
+      // Keep the phone smooth even if she spams the button
+      if (particles.length > 1500) particles.splice(0, particles.length - 1500);
+      if (!running) loop();
+    }
+
     function burst(x, y) {
       for (let i = 0; i < 140; i++) spawn(x, y, true);
       ambient = true; // then keep soft fireflies floating up
@@ -440,6 +488,26 @@
 
       particles = particles.filter((p) => p.life < p.max);
       for (const p of particles) {
+        if (p.confetti) {
+          p.life++;
+          p.vy += 0.25;          // gravity
+          p.vx *= 0.98;
+          p.vy *= 0.98;
+          p.wobble += 0.1;
+          p.x += p.vx + Math.sin(p.wobble) * 0.8;
+          p.y += p.vy;
+          p.rot += p.spin;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.scale(1, Math.cos(p.wobble)); // paper "flip" effect
+          ctx.globalAlpha = Math.min(1, (p.max - p.life) / 30);
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+          ctx.restore();
+          continue;
+        }
         p.life++;
         p.wobble += 0.03;
         p.x += p.vx + Math.sin(p.wobble) * 0.3;
