@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>For you</title>
 
+  <!-- Security: the page may only load code from Tailwind + Google Fonts,
+       and may only send data to Web3Forms (the email report). -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'none';
+    script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src https://fonts.gstatic.com;
+    img-src 'self' data:;
+    connect-src https://api.web3forms.com;
+    base-uri 'none';
+    form-action 'none';" />
+  <meta name="referrer" content="no-referrer" />
+
   <!-- Link preview (what she sees when you send the link in a chat) -->
   <meta name="description" content="Open me." />
   <meta property="og:title" content="For you" />
@@ -214,7 +227,14 @@
 
       // Final screen: confetti button + the little note under it
       confettiButtonText: 'Press me 🎉',
-      confettiNote:       '(yes, I put it back in English for you)',
+      confettiNote:       '(yes, I put it back)',
+
+      // 📧 Email report when she clicks "Yes" (how many times she tried "No").
+      // Paste your Web3Forms access key here (free: https://web3forms.com).
+      // It's safe in a public repo: this key can only send emails to YOUR inbox,
+      // and your email address itself never appears in the code.
+      // Tip: open the page with #test at the end of the URL to test without sending.
+      notifyAccessKey: '',
 
       // Little phrases the "No" button cycles through while it runs away
       noTexts: ['No', 'Nope', 'Too slow', 'Nice try', 'Not an option', 'Just say yes', '😏'],
@@ -267,6 +287,7 @@
       await wait(700);
       render($('question'), CONFIG.question);
       show($('step3'));
+      stats.questionShownAt = Date.now();
       await wait(300);
       $('step3').scrollIntoView({ block: 'center', behavior: 'smooth' });
     }, { once: true });
@@ -324,7 +345,8 @@
     let noIndex = 0;
     let escaped = false; // becomes position:fixed after the first escape
 
-    function flee(px, py) {
+    function flee(px, py, countIt = true) {
+      if (countIt) countNoAttempt();
       const pad = 16;
       const r = noBtn.getBoundingClientRect();
 
@@ -374,7 +396,7 @@
     ['pointerdown', 'touchstart', 'mouseenter', 'focus'].forEach((evt) =>
       noBtn.addEventListener(evt, (e) => {
         if (e.cancelable) e.preventDefault();
-        const p = e.touches ? e.touches[0] : e;
+        const p = (e.touches && e.touches[0]) || e;
         const r = noBtn.getBoundingClientRect();
         flee(p.clientX ?? r.left, p.clientY ?? r.top);
       }, { passive: false })
@@ -382,12 +404,58 @@
     noBtn.addEventListener('click', (e) => { e.preventDefault(); flee(innerWidth / 2, innerHeight / 2); });
 
     // Keep it on screen if the phone rotates
-    window.addEventListener('resize', () => { if (escaped) flee(innerWidth / 2, innerHeight / 2); });
+    window.addEventListener('resize', () => { if (escaped) flee(innerWidth / 2, innerHeight / 2, false); });
+
+    /* ---------------------------------------------------------------------
+       STATS — how many times she tried "No" (sent to you by email on "Yes")
+       --------------------------------------------------------------------- */
+    const stats = { noAttempts: 0, lastNo: 0, questionShownAt: 0 };
+
+    // One tap fires several events (pointerdown + touchstart...), so events
+    // closer than 400 ms count as a single attempt.
+    function countNoAttempt() {
+      const now = Date.now();
+      if (now - stats.lastNo > 400) stats.noAttempts++;
+      stats.lastNo = now;
+    }
+
+    function sendReport() {
+      const key = CONFIG.notifyAccessKey.trim();
+      if (!key || location.hash === '#test') return;
+
+      // Only one email per browser, so reloading the page can't spam you
+      try {
+        if (localStorage.getItem('reportSent')) return;
+        localStorage.setItem('reportSent', '1');
+      } catch (_) { /* private mode: send anyway */ }
+
+      const seconds = stats.questionShownAt ? Math.round((Date.now() - stats.questionShownAt) / 1000) : '?';
+      const message =
+        `Elle a dit YES 💜\n\n` +
+        `Tentatives sur "No" : ${stats.noAttempts}\n` +
+        `Clics sur "Yes" : 1\n` +
+        `Temps avant de dire Yes : ${seconds} s (après l'apparition de la question)\n` +
+        `Date : ${new Date().toLocaleString('fr-FR')}`;
+
+      fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          access_key: key,
+          subject: `💜 Yes ! (${stats.noAttempts} tentative(s) sur No)`,
+          from_name: 'Surprise page',
+          message,
+          botcheck: '', // honeypot: Web3Forms rejects the request if a bot fills it
+        }),
+        keepalive: true, // still sent even if she closes the page right away
+      }).catch(() => { /* never break the page if the network fails */ });
+    }
 
     /* ---------------------------------------------------------------------
        FINAL — "Yes" → glowing particles + warm fade + last message
        --------------------------------------------------------------------- */
     $('yesBtn').addEventListener('click', async (e) => {
+      sendReport();
       const r = e.currentTarget.getBoundingClientRect();
       burst(r.left + r.width / 2, r.top + r.height / 2);
       $('warmth').style.opacity = 1;
